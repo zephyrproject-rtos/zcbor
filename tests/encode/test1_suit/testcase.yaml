@@ -5,5 +5,9 @@ tests:
       - native_sim/native/64
       - mps2/an521/cpu0
       - qemu_malta/qemu_malta/be
-    tags: zcbor encode canonical test1
+    tags:
+      - zcbor
+      - encode
+      - canonical
+      - test1
     extra_args: CANONICAL=CANONICAL
