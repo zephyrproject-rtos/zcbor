@@ -3,7 +3,10 @@ tests:
     platform_allow:
       - mps2/an521/cpu0
       - qemu_malta/qemu_malta/be
-    tags: zcbor unit cpp
+    tags:
+      - zcbor
+      - unit
+      - cpp
 common: 
   harness: console
   harness_config:
