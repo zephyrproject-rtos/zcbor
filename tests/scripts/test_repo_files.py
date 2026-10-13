@@ -8,7 +8,7 @@ from unittest import TestCase, main, skipIf, SkipTest
 from pathlib import Path
 from re import search, S, compile
 from urllib import request
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from argparse import ArgumentParser
 from subprocess import Popen, check_output, PIPE, run
 from pycodestyle import StyleGuide
@@ -127,6 +127,39 @@ class TestSamples(TestCase):
 
 
 class TestDocs(TestCase):
+    @staticmethod
+    def _repo_url_to_github_https(repo_url: str) -> str | None:
+        """Convert common git remote URL formats to https://github.com/..."""
+        repo_url = repo_url.strip()
+
+        # git@github.com:org/repo(.git)
+        if repo_url.startswith("git@github.com:"):
+            repo_url = "https://github.com/" + repo_url.removeprefix("git@github.com:")
+
+        # git@github.com/org/repo(.git)
+        elif repo_url.startswith("git@github.com/"):
+            repo_url = "https://github.com/" + repo_url.removeprefix("git@github.com/")
+
+        # ssh://git@github.com/org/repo(.git)
+        elif repo_url.startswith("ssh://git@github.com/"):
+            repo_url = "https://github.com/" + repo_url.removeprefix("ssh://git@github.com/")
+
+        # https://github.com/org/repo(.git)
+        elif repo_url.startswith("https://github.com/"):
+            pass
+
+        # http://github.com/org/repo(.git)
+        elif repo_url.startswith("http://github.com/"):
+            repo_url = "https://github.com/" + repo_url.removeprefix("http://github.com/")
+
+        else:
+            return None
+
+        if repo_url.endswith(".git"):
+            repo_url = repo_url.removesuffix(".git")
+
+        return repo_url
+
     def __init__(self, *args, **kwargs):
         """Overridden to get base URL for relative links from remote tracking branch."""
         super(TestDocs, self).__init__(*args, **kwargs)
@@ -136,12 +169,11 @@ class TestDocs(TestCase):
         if remote_tracking:
             remote, remote_branch = remote_tracking.split('/', 1)  # '1' to only split one time.
             repo_url_args = ['git', 'remote', 'get-url', remote]
-            repo_url = check_output(repo_url_args).decode('utf-8').strip().strip('.git')
-            if 'github.com' in repo_url:
-                self.base_url = (repo_url + '/tree/' + remote_branch + '/')
-            else:
-                # The URL is not in github.com, so we are not sure it is constructed correctly.
-                self.base_url = None
+            repo_url_raw = check_output(repo_url_args).decode('utf-8').strip()
+            repo_url = self._repo_url_to_github_https(repo_url_raw)
+
+            # Use /blob/<branch>/ so relative file links resolve correctly.
+            self.base_url = (repo_url + '/blob/' + remote_branch + '/') if repo_url else None
         elif "GITHUB_SHA" in os.environ and "GITHUB_REPOSITORY" in os.environ:
             repo = os.environ["GITHUB_REPOSITORY"]
             sha = os.environ["GITHUB_SHA"]
@@ -155,10 +187,20 @@ class TestDocs(TestCase):
     def check_code(self, link, codes):
         """Check the status code of a URL link. Assert if not 200 (OK)."""
         try:
-            call = request.urlopen(link)
+            req = request.Request(
+                link,
+                headers={
+                    # Some sites (e.g. Wikipedia) may reject urllib's default user-agent.
+                    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) zcbor-tests",
+                },
+            )
+            call = request.urlopen(req, timeout=10)
             code = call.getcode()
         except HTTPError as e:
             code = e.code
+        except Exception as e:
+            # Avoid noisy thread stack traces; surface the root cause in the assertion.
+            code = f"{type(e).__name__}: {e}"
         codes.append((link, code))
 
     def do_test_links(self, path, allow_local=True):
@@ -175,7 +217,6 @@ class TestDocs(TestCase):
 
         matches = self.link_regex.findall(text)
         codes = list()
-        threads = list()
         for m in matches:
             link = m
             if allow_local:
@@ -186,12 +227,16 @@ class TestDocs(TestCase):
                     link = self.base_url + relative_path + link
             else:
                 self.assertTrue(link.startswith("https://"), "Link is not a URL")
-            threads.append(t := Thread(target=self.check_code, args=(link, codes), daemon=True))
-            t.start()
-        for t in threads:
-            t.join()
+
+            # Run sequentially to avoid noisy threaded exception dumps when
+            # the environment has SSL/HTTP issues.
+            self.check_code(link, codes)
+
         for link, code in codes:
-            self.assertEqual(code, 200, f"'{link}' gives code {code}")
+            if isinstance(code, int):
+                self.assertEqual(code, 200, f"'{link}' gives code {code}")
+            else:
+                self.fail(f"'{link}' failed: {code}")
 
     def test_readme_links(self):
         self.do_test_links(p_readme)

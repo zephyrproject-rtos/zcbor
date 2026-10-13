@@ -9,7 +9,7 @@
 #include <zcbor_common.h>
 #include <stdio.h>
 
-void main(void)
+int main(void)
 {
 	uint8_t cbor_payload[15];
 	bool success;
@@ -23,7 +23,7 @@ void main(void)
 
 	if (!success) {
 		printf("Encoding failed: %d\r\n", zcbor_peek_error(encoding_state));
-		return;
+		return 1;
 	}
 
 	/* Create zcbor state variable for decoding. */
@@ -34,8 +34,9 @@ void main(void)
 
 	if (!success) {
 		printf("Decoding failed: %d\r\n", zcbor_peek_error(decoding_state));
-		return;
+		return 1;
 	}
 
 	printf("Decoded string: '%.*s'\r\n", (int)decoded_string.len, decoded_string.value);
+	return 0;
 }

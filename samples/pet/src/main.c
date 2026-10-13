@@ -120,9 +120,10 @@ static void get_pet3(void)
 	print_pet(&decoded_pet);
 }
 
-void main(void)
+int main(void)
 {
 	get_pet1();
 	get_pet2();
 	get_pet3();
+	return 0;
 }

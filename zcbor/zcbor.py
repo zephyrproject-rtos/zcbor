@@ -1789,16 +1789,17 @@ CBOR-formatted bstr, all elements must be bstrs. If not, it is a programmer erro
                     retval[key] = self._to_yaml_obj(val)
             return retval
         elif isinstance(obj, bytes):
-            f = BytesIO(obj)
             try:
-                bstr_obj = self._to_yaml_obj(load(f))
-            except (CBORDecodeValueError, CBORDecodeEOF):
-                # failed decoding
-                bstr_obj = obj.hex()
-            else:
-                if f.read(1) != b'':
-                    # not fully decoded
+                decoded = loads(obj)
+                # Only treat it as nested CBOR if it round-trips exactly.
+                # This avoids mis-classifying arbitrary byte sequences like:
+                #   0x01 0x23 0x45 ... (which "loads" will happily parse as 1).
+                if dumps(decoded) == obj and not isinstance(decoded, bytes):
+                    bstr_obj = self._to_yaml_obj(decoded)
+                else:
                     bstr_obj = obj.hex()
+            except (CBORDecodeValueError, CBORDecodeEOF):
+                bstr_obj = obj.hex()
             return {"zcbor_bstr": bstr_obj}
         elif isinstance(obj, CBORTag):
             return {"zcbor_tag": obj.tag, "zcbor_tag_val": self._to_yaml_obj(obj.value)}

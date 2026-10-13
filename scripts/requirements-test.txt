@@ -2,3 +2,4 @@ pyelftools
 pycodestyle
 west
 ecdsa
+setuptools

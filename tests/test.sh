@@ -5,13 +5,20 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-pushd "scripts"
+set -eu
+
+pushd "tests/scripts"
 python3 -m unittest test_zcbor test_repo_files
 [[ $? -ne 0 ]] && popd && exit 1
 popd
 
-if [[ -z "$ZEHPYR_BASE" ]]; then
-        ZEPHYR_BASE=$(west topdir)/zephyr
+if ! command -v west >/dev/null 2>&1; then
+        echo "west not found; cannot run Zephyr twister tests." >&2
+        exit 1
 fi
 
-$ZEPHYR_BASE/scripts/twister -M -v -T . -W --exclude-tag release --platform native_sim --platform native_sim/native/64 --platform mps2/an521/cpu0 $*
+west twister -M -v -T . -W --exclude-tag release \
+        --platform native_sim \
+        --platform native_sim/native/64 \
+        --platform mps2/an521/cpu0 \
+        "$@"
